@@ -5,6 +5,12 @@ import logging
 
 # My custom game phases as an enum
 # Benjamin Branch Test 1
+
+# TODO : avoid collisions for ships
+# TODO : avoid sending ships to planets that already got send max amount of ships
+# TODO : improve planet priorities
+# TODO : ships in docking mode and getting attacked should stop and attack back
+
 from enum import Enum
 
 from hlt.entity import Ship
