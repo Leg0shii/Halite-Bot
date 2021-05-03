@@ -72,6 +72,31 @@ class Map:
             result.setdefault(entity.calculate_distance_between(foreign_entity), []).append(foreign_entity)
         return result
 
+    def nearby_planets_with_distance(self, entity):
+        """
+        :param entity: The source entity to find distances from
+        :return: Dict containing all entities with their designated distances
+        :rtype: dict
+        """
+        result = {}
+        for foreign_entity in self.all_planets():
+            result.setdefault(entity.calculate_distance_between(foreign_entity), foreign_entity)
+        return result
+
+    def nearby_enemy_ships_by_distance(self, entity):
+        """
+                :param entity: The source entity to find distances from
+                :return: Dict containing all entities with their designated distances
+                :rtype: dict
+                """
+        result = {}
+        for player in self.all_players():
+            if player == self.get_me():
+                continue
+            for foreign_entity in player.all_ships():
+                result.setdefault(entity.calculate_distance_between(foreign_entity), foreign_entity)
+        return result
+
     def _link(self):
         """
         Updates all the entities with the correct ship and planet objects
@@ -93,7 +118,7 @@ class Map:
         self._players, tokens = Player._parse(tokens)
         self._planets, tokens = entity.Planet._parse(tokens)
 
-        assert(len(tokens) == 0)  # There should be no remaining tokens at this point
+        assert (len(tokens) == 0)  # There should be no remaining tokens at this point
         self._link()
 
     def _all_ships(self):
@@ -136,7 +161,7 @@ class Map:
         """
         obstacles = []
         entities = ([] if issubclass(entity.Planet, ignore) else self.all_planets()) \
-            + ([] if issubclass(entity.Ship, ignore) else self._all_ships())
+                   + ([] if issubclass(entity.Ship, ignore) else self._all_ships())
         for foreign_entity in entities:
             if foreign_entity == ship or foreign_entity == target:
                 continue
@@ -149,6 +174,7 @@ class Player:
     """
     :ivar id: The player's unique id
     """
+
     def __init__(self, player_id, ships={}):
         """
         :param player_id: User's id
