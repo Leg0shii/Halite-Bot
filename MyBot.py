@@ -4,7 +4,7 @@ import hlt
 import logging
 
 # My custom game phases as an enum
-#Hello Mr. Daniel!
+
 from enum import Enum
 
 from hlt.entity import Ship
