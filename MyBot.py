@@ -70,6 +70,7 @@ while True:
                 if ship.can_dock(planet):
                     # Then dock
                     command_queue.append(ship.dock(planet))
+                    break
                 # Else if the planet is owned by enemy
                 elif planet.is_owned() and planet.owner != game_map.get_me():
                     # Destroy a docked ship
@@ -85,7 +86,7 @@ while True:
                         speed=int(hlt.constants.MAX_SPEED))
                 if navigate_command:
                     command_queue.append(navigate_command)
-                break
+                    break
             # If the closest planet is occupied start fighting
             if closest_planets[0].is_full():
                 game_state = Phase.fighting
@@ -120,6 +121,7 @@ while True:
                 elif ship.can_dock(planet):
                     # We add the command by appending it to the command_queue
                     command_queue.append(ship.dock(planet))
+                    break
                 else:
                     # Else the planet must be free to occupy, so fly towards it
                     navigate_command = ship.navigate(
@@ -128,7 +130,7 @@ while True:
                         speed=int(hlt.constants.MAX_SPEED))
                 if navigate_command:
                     command_queue.append(navigate_command)
-                break
+                    break
             # If there are less than 3 planets in a ship priority queue, begin the hunting phase
             if len(ships_priority_queues[ship]) < 3:
                 game_state = Phase.hunting
@@ -155,7 +157,8 @@ while True:
                     ship.closest_point_to(enemy_ship),
                     game_map,
                     speed=int(hlt.constants.MAX_SPEED))
-                break
+                if navigate_command:
+                    break
             if navigate_command:
                 command_queue.append(navigate_command)
 
