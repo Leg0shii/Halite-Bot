@@ -16,6 +16,63 @@ class Phase(Enum):
     hunting = 2
 
 
+def create_priority_queue_for_ship(ship, game_map, priority_queue_all_ships, biggest_planets):
+    # Determine closest planets and put them into a list
+    all_planets_by_distance = nearby_planets_with_distance(game_map, ship)
+    closest_planets = []
+    for k in sorted(all_planets_by_distance.keys()):
+        closest_planets.append(all_planets_by_distance.get(k))
+    # And create the priority dict
+    priority_planets_dict = {}
+    for planet in closest_planets:
+        # If the planet has no more resources
+        if not planet.remaining_resources > 0:
+            # Neglect this planet
+            continue
+        # If I'm the owner and the planet has no capacity for docking
+        if planet.owner == game_map.get_me() and planet.is_full():
+            # Neglect this planet
+            continue
+        closest_index = closest_planets.index(planet)
+        biggest_index = biggest_planets.index(planet)
+        # Calculate priority mainly by proximity. Big planets will be focussed more than small ones
+        priority = closest_index * 1 + biggest_index * 0.4
+        priority_planets_dict[priority] = planet
+    # Now sort the priority dict by priority and put them into a usable list
+    priority_planets = []
+    for k in sorted(priority_planets_dict.keys()):
+        priority_planets.append(priority_planets_dict.get(k))
+    # Add the ships priority queue into the ship priority dict
+    priority_queue_all_ships[ship] = priority_planets
+
+
+def nearby_planets_with_distance(game_map, entity):
+    """
+    :param entity: The source entity to find distances from
+    :return: Dict containing all entities with their designated distances
+    :rtype: dict
+    """
+    result = {}
+    for foreign_entity in game_map.all_planets():
+        result.setdefault(entity.calculate_distance_between(foreign_entity), foreign_entity)
+    return result
+
+
+def nearby_enemy_ships_by_distance(game_map, entity):
+    """
+            :param entity: The source entity to find distances from
+            :return: Dict containing all entities with their designated distances
+            :rtype: dict
+            """
+    result = {}
+    for player in game_map.all_players():
+        if player == game_map.get_me():
+            continue
+        for foreign_entity in player.all_ships():
+            result.setdefault(entity.calculate_distance_between(foreign_entity), foreign_entity)
+    return result
+
+
 # GAME START
 game = hlt.Game("Dragon")
 logging.info("Starting my Dragon bot!")
@@ -51,7 +108,7 @@ while True:
         for ship in game_map.get_me().all_ships():
             navigate_command = None
             # Determine closest planets and put them into a list
-            all_planets_by_distance = game_map.nearby_planets_with_distance(ship)
+            all_planets_by_distance = nearby_planets_with_distance(game_map, ship)
             closest_planets = []
             for k in sorted(all_planets_by_distance.keys()):
                 closest_planets.append(all_planets_by_distance.get(k))
@@ -96,7 +153,7 @@ while True:
             navigate_command = None
             # If this ship doesn't have priority planets
             if not ships_priority_queues[ship]:
-                ship.create_priority_queue_for_ship(game_map, ships_priority_queues, biggest_planets)
+                create_priority_queue_for_ship(ship, game_map, ships_priority_queues, biggest_planets)
 
             # If the ship is docked and resources are empty
             if ship.docking_status == ship.DockingStatus.DOCKED and not ship.__getattribute__(
@@ -147,7 +204,7 @@ while True:
             if ship.docking_status != ship.DockingStatus.UNDOCKED:
                 continue
             # Determine list of nearby enemy ships sorted by distance
-            all_enemy_ships_by_distance = game_map.nearby_enemy_ships_by_distance(ship)
+            all_enemy_ships_by_distance = nearby_enemy_ships_by_distance(game_map, ship)
             closest_enemy_ships = []
             for k in sorted(all_enemy_ships_by_distance.keys()):
                 closest_enemy_ships.append(all_enemy_ships_by_distance.get(k))

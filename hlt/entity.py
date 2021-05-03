@@ -143,10 +143,6 @@ class Planet(Entity):
         """
         return len(self._docked_ship_ids) >= self.num_docking_spots
 
-    def number_docked_ships(self):
-        # returns number of docked ships
-        return len(self._docked_ship_ids)
-
     def _link(self, players, planets):
         """
         This function serves to take the id values set in the parse function and use it to populate the planet
@@ -273,7 +269,6 @@ class Ship(Entity):
         """
         return "u {}".format(self.id)
 
-    # TODO : Add proximity sensor for ships.
     def navigate(self, target, game_map, speed, avoid_obstacles=True, max_corrections=90, angular_step=1,
                  ignore_ships=False, ignore_planets=False):
         """
@@ -375,35 +370,6 @@ class Ship(Entity):
         for _ in range(int(num_ships)):
             ship_id, ships[ship_id], remainder = Ship._parse_single(player_id, remainder)
         return ships, remainder
-
-    def create_priority_queue_for_ship(self, game_map, priority_queue_all_ships, biggest_planets):
-        # Determine closest planets and put them into a list
-        all_planets_by_distance = game_map.nearby_planets_with_distance(self)
-        closest_planets = []
-        for k in sorted(all_planets_by_distance.keys()):
-            closest_planets.append(all_planets_by_distance.get(k))
-        # And create the priority dict
-        priority_planets_dict = {}
-        for planet in closest_planets:
-            # If the planet has no more resources
-            if not planet.remaining_resources > 0:
-                # Neglect this planet
-                continue
-            # If I'm the owner and the planet has no capacity for docking
-            if planet.owner == game_map.get_me() and planet.is_full():
-                # Neglect this planet
-                continue
-            closest_index = closest_planets.index(planet)
-            biggest_index = biggest_planets.index(planet)
-            # Calculate priority mainly by proximity. Big planets will be focussed more than small ones
-            priority = closest_index * 1 + biggest_index * 0.4
-            priority_planets_dict[priority] = planet
-        # Now sort the priority dict by priority and put them into a usable list
-        priority_planets = []
-        for k in sorted(priority_planets_dict.keys()):
-            priority_planets.append(priority_planets_dict.get(k))
-        # Add the ships priority queue into the ship priority dict
-        priority_queue_all_ships[self] = priority_planets
 
 
 class Position(Entity):
