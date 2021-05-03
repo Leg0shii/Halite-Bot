@@ -70,7 +70,7 @@ class Entity:
         pass
 
     def __str__(self):
-        return "Entity {} (id: {}) at position: (x = {}, y = {}), with radius = {}" \
+        return "Entity {} (id: {}) at position: (x = {}, y = {}), with radius = {}"\
             .format(self.__class__.__name__, self.id, self.x, self.y, self.radius)
 
     def __repr__(self):
