@@ -1,5 +1,3 @@
-from typing import Dict, List, Any
-
 import hlt
 import logging
 import numpy
@@ -39,8 +37,8 @@ class Bot:
         # Bonus
         self.conquer_bonus = 20
 
-    def update(self):
-        self.map = game.update_map()
+    def update(self, _game_map):
+        self.map = _game_map
         self.my_ships = self.map.get_me().all_ships()
         self.enemy_ships = []
         for ship in self.map._all_ships():
@@ -51,13 +49,31 @@ class Bot:
     def command_ships(self):
         _command_queue = []
         for ship in self.my_ships:
+            navigate_command = None
             if ship.docking_status != ship.DockingStatus.UNDOCKED:
                 continue
-
+            interesting_planet = None
+            highest_priority = 0
+            while navigate_command is None:
+                for planet in self.planets:
+                    priority = self.evaluate_planet(ship, planet)
+                    if priority > highest_priority:
+                        interesting_planet = planet
+                        highest_priority = priority
+                if ship.can_dock(interesting_planet) and not interesting_planet.is_full():
+                    navigate_command = ship.dock(interesting_planet)
+                else:
+                    navigate_command = ship.navigate(
+                        ship.closest_point_to(interesting_planet),
+                        self.map,
+                        speed=hlt.constants.MAX_SPEED
+                    )
+            _command_queue.append(navigate_command)
         return _command_queue
 
     def evaluate_planet(self, ship, planet):
-        if planet.owner == self.me and planet.is_full():
+        if planet.owner == self.me:
+            print(planet.owner)
             return -1
         distance = self.max_distance - ship.calculate_distance_between(planet)
         return distance
@@ -83,6 +99,7 @@ class Bot:
 
 bot = Bot(game)
 while True:
-    bot.update()
+    game_map = game.update_map()
+    bot.update(game_map)
     command_queue = bot.command_ships()
     game.send_command_queue(command_queue)
