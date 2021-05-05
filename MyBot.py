@@ -30,6 +30,7 @@ class Bot:
         self.max_radius = self.max_planet.radius
         self.max_remaining_resources = self.max_planet.remaining_resources
         self.max_free_docking_spots = self.max_planet.num_docking_spots
+        # TODO : Integrate Penalties and Bonus
         # Penalties
         self.time_penalty = -1
         self.death_penalty = -50
@@ -39,7 +40,8 @@ class Bot:
 
     def update(self, _game_map):
         self.map = _game_map
-        self.my_ships = self.map.get_me().all_ships()
+        self.me = self.map.get_me()
+        self.my_ships = self.me.all_ships()
         self.enemy_ships = []
         for ship in self.map._all_ships():
             if ship.owner.id != self.id:
@@ -54,35 +56,65 @@ class Bot:
                 continue
             interesting_planet = None
             highest_priority = 0
-            while navigate_command is None:
-                for planet in self.planets:
-                    priority = self.evaluate_planet(ship, planet)
-                    if priority > highest_priority:
-                        interesting_planet = planet
-                        highest_priority = priority
-                if ship.can_dock(interesting_planet) and not interesting_planet.is_full():
-                    navigate_command = ship.dock(interesting_planet)
-                else:
-                    navigate_command = ship.navigate(
-                        ship.closest_point_to(interesting_planet),
-                        self.map,
-                        speed=hlt.constants.MAX_SPEED
-                    )
-            _command_queue.append(navigate_command)
+            for planet in self.planets:
+                priority = self.evaluate_planet(ship, planet)
+                if priority > highest_priority:
+                    interesting_planet = planet
+                    highest_priority = priority
+            if interesting_planet is None:
+                navigate_command = self.hunt(ship)
+            elif interesting_planet.is_owned() and interesting_planet.owner is not self.me:
+                navigate_command = self.attack(ship, interesting_planet)
+            elif ship.can_dock(interesting_planet):
+                navigate_command = ship.dock(interesting_planet)
+            else:
+                navigate_command = ship.navigate(
+                    ship.closest_point_to(interesting_planet),
+                    self.map,
+                    speed=hlt.constants.MAX_SPEED)
+            if navigate_command is not None:
+                _command_queue.append(navigate_command)
         return _command_queue
 
     def evaluate_planet(self, ship, planet):
-        if planet.owner == self.me:
-            print(planet.owner)
-            return -1
-        distance = self.max_distance - ship.calculate_distance_between(planet)
-        return distance
+        if planet.owner is self.me and planet.is_full():
+            return 0
+        line_penalty = 1
+        for ship_ahead in self.my_ships:
+            if ship_ahead.docking_status != ship_ahead.DockingStatus.UNDOCKED:
+                continue
+            if ship_ahead.calculate_distance_between(planet) < ship.calculate_distance_between(planet):
+                line_penalty -= 1 / 3
+        distance = 1 - (ship.calculate_distance_between(planet)) / self.max_distance
+        size = planet.radius / self.max_radius
+        remaining_resources = planet.remaining_resources / self.max_remaining_resources
+        free_docking_spots = (planet.num_docking_spots - len(planet.all_docked_ships())) / self.max_free_docking_spots
+        priority = distance * 3 + size * 0.5 + remaining_resources * 0.5 + free_docking_spots * 0.5 + line_penalty
+        return priority
+
+    def hunt(self, ship):
+        closest_enemy_ship = None
+        command = None
+        closest_distance = self.max_distance
+        while command is None:
+            for enemy_ship in self.enemy_ships:
+                enemy_ship_distance = ship.calculate_distance_between(enemy_ship)
+                if closest_distance > enemy_ship_distance:
+                    closest_enemy_ship = enemy_ship
+                    closest_distance = enemy_ship_distance
+            command = ship.navigate(
+                ship.closest_point_to(closest_enemy_ship),
+                self.map,
+                speed=hlt.constants.MAX_SPEED,
+                max_corrections=180
+            )
+        return command
 
     def attack(self, ship, planet):
         closest_enemy_ship = None
         command = None
         closest_distance = self.max_distance
-        while not command:
+        while command is None:
             for enemy_ship in planet.all_docked_ships():
                 enemy_ship_distance = ship.calculate_distance_between(enemy_ship)
                 if closest_distance > enemy_ship_distance:
