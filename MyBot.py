@@ -14,6 +14,7 @@ class Bot:
     ship: Ship
     planet: Planet
 
+    # Get all the data the first time
     def __init__(self, _game):
         self.game = _game
         self.map = _game.map
@@ -38,6 +39,7 @@ class Bot:
         # Bonus
         self.conquer_bonus = 20
 
+    # Update the data each round
     def update(self, _game_map):
         self.map = _game_map
         self.me = self.map.get_me()
@@ -48,59 +50,83 @@ class Bot:
                 self.enemy_ships.append(ship)
         self.planets = self.map.all_planets()
 
+    # Main commanding method
     def command_ships(self):
         _command_queue = []
         for ship in self.my_ships:
             navigate_command = None
+            # Leave non undocked ships alone
             if ship.docking_status != ship.DockingStatus.UNDOCKED:
                 continue
             interesting_planet = None
             highest_priority = 0
+            # Determine an interesting planet
             for planet in self.planets:
                 priority = self.evaluate_planet(ship, planet)
                 if priority > highest_priority:
                     interesting_planet = planet
                     highest_priority = priority
+            # If that failed (by construction of evaluate_planet if you own all planets)
+            # or if that ship is close to an enemy ship
             if interesting_planet is None or self.in_proximity_of_enemy(ship):
+                # Hunt down the closest enemy ship
                 navigate_command = self.hunt(ship)
+            # Else if the planet is owned by an enemy
             elif interesting_planet.is_owned() and interesting_planet.owner is not self.me:
+                # Attack the closest docked ship of that planet
                 navigate_command = self.attack(ship, interesting_planet)
+            # Else dock if possible
             elif ship.can_dock(interesting_planet):
                 navigate_command = ship.dock(interesting_planet)
+            # Else navigate towards that interesting planet
             else:
                 navigate_command = ship.navigate(
                     ship.closest_point_to(interesting_planet),
                     self.map,
-                    speed=hlt.constants.MAX_SPEED)
+                    speed=hlt.constants.MAX_SPEED,
+                    max_corrections=180)
             if navigate_command is not None:
                 _command_queue.append(navigate_command)
         return _command_queue
 
+    # Main function for evaluating planets and determining an for the ship interesting one
     def evaluate_planet(self, ship, planet):
+        # If it's my planet and if I can't dock any more ships
         if planet.owner is self.me and planet.is_full():
+            # It is an uninteresting planet
             return 0
+        # This describes a penalty for navigating towards a planet if some other ships of mine already
+        # go there. The more ships navigate towards a planet and form a line, hence the name, the bigger
+        # the penalty. Note that a penalty means adding less to or even subtracting from the final planets
+        # priority
         line_penalty = 1
         for ship_ahead in self.my_ships:
             if ship_ahead.docking_status != ship_ahead.DockingStatus.UNDOCKED:
                 continue
             if ship_ahead.calculate_distance_between(planet) < ship.calculate_distance_between(planet):
                 line_penalty -= 1 / 3
+        # The closer a planet, the more important it becomes
         distance = 1 - (ship.calculate_distance_between(planet)) / self.max_distance
+        # Same with all these
         remaining_resources = planet.remaining_resources / self.max_remaining_resources
         free_docking_spots = (planet.num_docking_spots - len(planet.all_docked_ships())) / self.max_free_docking_spots
+        # Weighted priority
         priority = distance * 3 + remaining_resources * 0.5 + free_docking_spots * 0.5 + line_penalty
         return priority
 
+    # Hunt down the closest enemy ship
     def hunt(self, ship):
         closest_enemy_ship = None
         command = None
         closest_distance = self.max_distance
         while command is None:
+            # Determine the closest enemy ship
             for enemy_ship in self.enemy_ships:
                 enemy_ship_distance = ship.calculate_distance_between(enemy_ship)
                 if closest_distance > enemy_ship_distance:
                     closest_enemy_ship = enemy_ship
                     closest_distance = enemy_ship_distance
+            # Navigate towards it. This will attack it if it reaches its radius.
             command = ship.navigate(
                 ship.closest_point_to(closest_enemy_ship),
                 self.map,
@@ -109,6 +135,7 @@ class Bot:
             )
         return command
 
+    # Same as hunting, except now attack the closest docked ship of a given planet
     def attack(self, ship, planet):
         closest_enemy_ship = None
         command = None
@@ -127,6 +154,7 @@ class Bot:
             )
         return command
 
+    # Gives a ship an option to detect close ships
     def in_proximity_of_enemy(self, ship):
         for enemy_ship in self.enemy_ships:
             if ship.calculate_distance_between(enemy_ship) < 3 * hlt.constants.SHIP_RADIUS:
@@ -134,6 +162,7 @@ class Bot:
         return False
 
 
+# Basic turn loop. First update our bot, then fetch the commands and send them to the halite engine
 bot = Bot(game)
 while True:
     game_map = game.update_map()
