@@ -61,7 +61,7 @@ class Bot:
                 if priority > highest_priority:
                     interesting_planet = planet
                     highest_priority = priority
-            if interesting_planet is None:
+            if interesting_planet is None or self.in_proximity_of_enemy(ship):
                 navigate_command = self.hunt(ship)
             elif interesting_planet.is_owned() and interesting_planet.owner is not self.me:
                 navigate_command = self.attack(ship, interesting_planet)
@@ -86,10 +86,9 @@ class Bot:
             if ship_ahead.calculate_distance_between(planet) < ship.calculate_distance_between(planet):
                 line_penalty -= 1 / 3
         distance = 1 - (ship.calculate_distance_between(planet)) / self.max_distance
-        size = planet.radius / self.max_radius
         remaining_resources = planet.remaining_resources / self.max_remaining_resources
         free_docking_spots = (planet.num_docking_spots - len(planet.all_docked_ships())) / self.max_free_docking_spots
-        priority = distance * 3 + size * 0.5 + remaining_resources * 0.5 + free_docking_spots * 0.5 + line_penalty
+        priority = distance * 3 + remaining_resources * 0.5 + free_docking_spots * 0.5 + line_penalty
         return priority
 
     def hunt(self, ship):
@@ -127,6 +126,12 @@ class Bot:
                 max_corrections=180
             )
         return command
+
+    def in_proximity_of_enemy(self, ship):
+        for enemy_ship in self.enemy_ships:
+            if ship.calculate_distance_between(enemy_ship) < 3 * hlt.constants.SHIP_RADIUS:
+                return True
+        return False
 
 
 bot = Bot(game)
