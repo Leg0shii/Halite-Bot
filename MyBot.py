@@ -3,7 +3,7 @@ import logging
 import numpy
 
 from hlt import Game
-from hlt.entity import Ship, Planet
+from hlt.entity import Ship, Planet, Position
 
 game = hlt.Game("Dragon")
 logging.info("Starting my Dragon bot!")
@@ -56,6 +56,23 @@ class Bot:
         for ship in self.my_ships:
             # Leave non undocked ships alone
             if ship.docking_status != ship.DockingStatus.UNDOCKED:
+                if not ship.planet.remaining_resources > 0:
+                    _command_queue.append(ship.undock())
+                    continue
+                continue
+            dodge_command = None
+            # If the ship is too close to another of my ships
+            for too_close_ship in self.my_ships:
+                if ship is too_close_ship:
+                    continue
+                if ship.calculate_distance_between(too_close_ship) < hlt.constants.SHIP_RADIUS/3:
+                    dodge_command = ship.navigate(
+                        Position(ship.x + (ship.x - too_close_ship.x), ship.y - (ship.y - too_close_ship.y)),
+                        self.map,
+                        speed=hlt.constants.MAX_SPEED
+                    )
+            if dodge_command:
+                _command_queue.append(dodge_command)
                 continue
             interesting_planet = None
             highest_priority = 0
