@@ -54,7 +54,6 @@ class Bot:
     def command_ships(self):
         _command_queue = []
         for ship in self.my_ships:
-            navigate_command = None
             # Leave non undocked ships alone
             if ship.docking_status != ship.DockingStatus.UNDOCKED:
                 continue
