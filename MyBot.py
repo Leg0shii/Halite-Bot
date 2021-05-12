@@ -120,6 +120,11 @@ class Bot:
         if planet.owner is self.me and planet.is_full():
             # It is an uninteresting planet
             return 0
+        # If the planet has no remaining resources
+        if not planet.remaining_resources > 0:
+            # The planet is uninteresting
+            return 0
+        distance_to_center = Position()
         # This describes a penalty for navigating towards a planet if some other ships of mine already
         # go there. The more ships navigate towards a planet and form a line, hence the name, the bigger
         # the penalty. Note that a penalty means adding less to or even subtracting from the final planets
@@ -136,7 +141,7 @@ class Bot:
         remaining_resources = planet.remaining_resources / self.max_remaining_resources
         free_docking_spots = (planet.num_docking_spots - len(planet.all_docked_ships())) / self.max_free_docking_spots
         # Weighted priority
-        priority = distance * 3 + remaining_resources * 0.5 + free_docking_spots * 0.5 + line_penalty
+        priority = distance * 3 + remaining_resources * 0.5 + free_docking_spots * 0.5 + line_penalty * 3
         return priority
 
     # Hunt down the closest enemy ship
