@@ -466,7 +466,7 @@ class Bot:
 
 if __name__ == '__main__':
     debug = False
-    bot_name = 'MyBot'
+    bot_name = 'Captain'
     game = hlt.Game(bot_name)
     if not debug:
         sys.stderr = open(os.devnull, mode='w') # prevent warning messages from breaking bot

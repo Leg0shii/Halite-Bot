@@ -73,7 +73,7 @@ class Bot:
             for too_close_ship in self.my_ships:
                 if ship is too_close_ship:
                     continue
-                if ship.calculate_distance_between(too_close_ship) < hlt.constants.SHIP_RADIUS / 3:
+                if ship.calculate_distance_between(too_close_ship) < hlt.constants.WEAPON_RADIUS / 2:
                     dodge_command = ship.navigate(
                         Position(ship.x + (ship.x - too_close_ship.x), ship.y - (ship.y - too_close_ship.y)),
                         self.map,
@@ -94,22 +94,25 @@ class Bot:
             # or if that ship is close to an enemy ship
             if interesting_planet is None or self.in_proximity_of_enemy(ship):
                 # Hunt down the closest enemy ship
+                logging.debug("hunt")
                 navigate_command = self.hunt(ship)
             # Else if the planet is owned by an enemy
             elif interesting_planet.is_owned() and interesting_planet.owner is not self.me:
+                logging.debug("attack")
                 # Attack the closest docked ship of that planet
                 navigate_command = self.attack(ship, interesting_planet)
             # Else dock if possible
             elif ship.can_dock(interesting_planet):
+                logging.debug("dock")
                 navigate_command = ship.dock(interesting_planet)
             # Else navigate towards that interesting planet
             else:
-                navigate_command = self.ship_move(ship, ship.closest_point_to(interesting_planet), 2)
-                # navigate_command = ship.navigate(
-                #     ship.closest_point_to(interesting_planet),
-                #     self.map,
-                #     speed=hlt.constants.MAX_SPEED,
-                #     max_corrections=180)
+                logging.debug("move")
+                navigate_command = ship.navigate(
+                    ship.closest_point_to(interesting_planet),
+                    self.map,
+                    speed=hlt.constants.MAX_SPEED,
+                    max_corrections=180)
             if navigate_command is not None:
                 _command_queue.append(navigate_command)
         return _command_queue
@@ -124,7 +127,9 @@ class Bot:
         if not planet.remaining_resources > 0:
             # The planet is uninteresting
             return 0
-        distance_to_center = Position()
+        # The closer to the center, the more important. Strategic 'castle'
+        distance_to_center = 1 - planet.calculate_distance_between(
+            Position(self.map.width / 2, self.map.height / 2)) / self.max_distance
         # This describes a penalty for navigating towards a planet if some other ships of mine already
         # go there. The more ships navigate towards a planet and form a line, hence the name, the bigger
         # the penalty. Note that a penalty means adding less to or even subtracting from the final planets
@@ -140,8 +145,13 @@ class Bot:
         # Same with all these
         remaining_resources = planet.remaining_resources / self.max_remaining_resources
         free_docking_spots = (planet.num_docking_spots - len(planet.all_docked_ships())) / self.max_free_docking_spots
+        enemy_planet = 0
+        if planet.is_owned() and planet.owner != self.me:
+            if ship.calculate_distance_between(planet) < self.max_distance / 4:
+                enemy_planet = 1 - len(planet.all_docked_ships()) / planet.num_docking_spots
         # Weighted priority
-        priority = distance * 3 + remaining_resources * 0.5 + free_docking_spots * 0.5 + line_penalty * 3
+        priority = distance * 1 + enemy_planet * 0.5 + remaining_resources * 0.5 + free_docking_spots * 0.5 \
+                   + line_penalty * 1 + distance_to_center * 1
         return priority
 
     # Hunt down the closest enemy ship
@@ -149,21 +159,18 @@ class Bot:
         closest_enemy_ship = None
         command = None
         closest_distance = self.max_distance
-        while command is None:
-            # Determine the closest enemy ship
-            for enemy_ship in self.enemy_ships:
-                enemy_ship_distance = ship.calculate_distance_between(enemy_ship)
-                if closest_distance > enemy_ship_distance:
-                    closest_enemy_ship = enemy_ship
-                    closest_distance = enemy_ship_distance
-            # Navigate towards it. This will attack it if it reaches its radius.
-            command = self.ship_move(ship, ship.closest_point_to(closest_enemy_ship), 5)
-            # command = ship.navigate(
-            #     ship.closest_point_to(closest_enemy_ship),
-            #     self.map,
-            #     speed=hlt.constants.MAX_SPEED,
-            #     max_corrections=180
-            # )
+        # Determine the closest enemy ship
+        for enemy_ship in self.enemy_ships:
+            enemy_ship_distance = ship.calculate_distance_between(enemy_ship)
+            if closest_distance > enemy_ship_distance:
+                closest_enemy_ship = enemy_ship
+                closest_distance = enemy_ship_distance
+        # Navigate towards it. This will attack it if it reaches its radius.
+        command = ship.navigate(
+            ship.closest_point_to(closest_enemy_ship),
+            self.map,
+            speed=hlt.constants.MAX_SPEED
+        )
         return command
 
     # Same as hunting, except now attack the closest docked ship of a given planet
@@ -177,26 +184,26 @@ class Bot:
                 if closest_distance > enemy_ship_distance:
                     closest_enemy_ship = enemy_ship
                     closest_distance = enemy_ship_distance
-            command = self.ship_move(ship, ship.closest_point_to(closest_enemy_ship), 5)
-            # command = ship.navigate(
-            #     ship.closest_point_to(closest_enemy_ship),
-            #     self.map,
-            #     speed=hlt.constants.MAX_SPEED,
-            #     max_corrections=180
-            # )
+            command = ship.navigate(
+                ship.closest_point_to(closest_enemy_ship),
+                self.map,
+                speed=hlt.constants.MAX_SPEED,
+                max_corrections=180
+            )
         return command
 
     # Gives a ship an option to detect close ships
     def in_proximity_of_enemy(self, ship):
         for enemy_ship in self.enemy_ships:
-            if ship.calculate_distance_between(enemy_ship) < 3 * hlt.constants.SHIP_RADIUS:
+            if ship.calculate_distance_between(enemy_ship) < 10 * hlt.constants.WEAPON_RADIUS:
                 return True
         return False
 
     # Moves the ship around
     def ship_move(self, ship, target, radius):
         angle = ship.calculate_angle_between(ship.closest_point_to(target))
-        speed = 7
+        speed = hlt.constants.MAX_SPEED
+        distance = ship.calculate_distance_between(target)
 
         if ship.docking_status == ship.DockingStatus.DOCKED:
             return None
@@ -204,8 +211,8 @@ class Bot:
         # Checks if ship is already in radius of object
         if not in_radius_of_point((ship.x, ship.y), target, radius):
             # Checks if distance between object is smaller then 7, if so, move only half of the speed
-            if ship.calculate_distance_between(target) < 7:
-                move_command = ship.thrust(ship.calculate_distance_between(target), angle)
+            if distance < speed:
+                move_command = ship.thrust(distance, angle)
                 return move_command
             else:
                 move_command = ship.thrust(speed, angle)
@@ -214,7 +221,8 @@ class Bot:
             # Check if there are any planets in the way, if so, adjust angle by 1 degree
             for planet in self.map.all_planets():
                 counter = 0
-                while in_radius_of_point((updated_ship_posx, updated_ship_posy), planet, planet.radius) and counter < 100:
+                while in_radius_of_point((updated_ship_posx, updated_ship_posy), planet, planet.radius) \
+                        and counter < 100:
                     angle = angle + 1
                     updated_ship_posx = speed * numpy.cos(angle) + ship.x
                     updated_ship_posy = speed * numpy.sin(angle) + ship.y
