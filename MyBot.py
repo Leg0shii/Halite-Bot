@@ -4,6 +4,7 @@ import numpy
 
 from hlt import Game
 from hlt.entity import Ship, Planet, Position
+from hlt import constants
 
 game = hlt.Game("Dragon")
 logging.info("Starting my Destroyer bot!")
@@ -11,10 +12,30 @@ logging.info("Starting my Destroyer bot!")
 
 # Checks if point1 is inside a radius of point2
 def in_radius_of_point(point1, point2, radius):
-    dist = numpy.sqrt((point1[0] - point2.x) ** 2 + (point1[1] - point2.y) ** 2)
+    dist = numpy.sqrt((point1.x - point2.x) ** 2 + (point1.y - point2.y) ** 2)
     if dist <= radius:
         return True
     return False
+
+
+def calc_update_pos(ship, speed, angle):
+    return Position(speed * numpy.cos(numpy.radians(angle)) + ship.x,
+                    speed * numpy.sin(numpy.radians(angle)) + ship.y)
+
+
+def calc_midpoint(pos1, pos2):
+    x_m = (numpy.abs(pos1.x - pos2.x) / 2) + numpy.minimum(pos1.x, pos2.x)
+    y_m = (numpy.abs(pos1.y - pos2.y) / 2) + numpy.minimum(pos1.y, pos2.y)
+    return Position(x_m, y_m)
+
+
+def get_offset_points(pos1, pos2, middle, offset):
+    new_x_1 = middle.x + offset
+    new_x_2 = middle.x - offset
+    m = (numpy.abs(pos1.x - pos2.x) / numpy.abs(pos1.y - pos2.y))
+    new_y_1 = m * new_x_1 + (m * middle.x) * (-1) + middle.y
+    new_y_2 = m * new_x_2 + (m * middle.x) * (-1) + middle.y
+    return [Position(new_x_1, new_y_1), Position(new_x_2, new_y_2)]
 
 
 class Bot:
@@ -183,6 +204,16 @@ class Bot:
                 return True
         return False
 
+    def has_obstacle_in_path(self, points, ship):
+        obs1 = self.game.map.obstacles_between(ship, points[0])
+        obs2 = self.game.map.obstacles_between(ship, points[1])
+        if len(obs1) == 0:
+            return points[0]
+        elif len(obs2) == 0:
+            return points[1]
+        else:
+            return None
+
     # Returns a defend command
     def check_if_dodge(self,ship):
         dodge_command = None
@@ -244,47 +275,52 @@ class Bot:
         return min_planet
 
     # Moves the ship around
-    def ship_move(self, ship, target, radius):
-        angle = ship.calculate_angle_between(ship.closest_point_to(target))
-        speed = hlt.constants.MAX_SPEED
-        distance = ship.calculate_distance_between(target)
+    def ship_move(self, ship, target):
+        distance_to_target = ship.calculate_distance_between(target)
+        angle = round(ship.calculate_angle_between(ship.closest_point_to(target)))
+        speed = constants.MAX_SPEED
 
-        if ship.docking_status == ship.DockingStatus.DOCKED:
+        obstacles_on_path = game_map.obstacles_between(ship, target)
+        logging.debug("ShipNR: " + str(ship.id) + " || OBSTACLES: " + str(obstacles_on_path))
+
+        # If ship is already closer then 0.5 units then dont do anything
+        if distance_to_target < 0.5:
+            logging.debug("ShipNR: " + str(ship.id) + " || No movement")
             return None
 
-        # Checks if ship is already in radius of object
-        if not in_radius_of_point((ship.x, ship.y), target, radius):
-            # Checks if distance between object is smaller then 7, if so, move only half of the speed
-            if distance < speed:
-                move_command = ship.thrust(distance, angle)
-                return move_command
+        # If no obstacles on the way, fly straight
+        if len(obstacles_on_path) == 0:
+            # If you are already closer then 8, fly with slower speed
+            if distance_to_target < 8:
+                smaller_speed = numpy.floor(distance_to_target)
+                logging.debug(
+                    "ShipNR: " + str(ship.id) + " || Thrust: " + str(smaller_speed) + " with Angle: " + str(angle))
+                return ship.thrust(smaller_speed, angle)
+            # Fly straight as fast as possible
             else:
-                move_command = ship.thrust(speed, angle)
-                updated_ship_posx = speed * numpy.cos(angle) + ship.x
-                updated_ship_posy = speed * numpy.sin(angle) + ship.y
-            # Check if there are any planets in the way, if so, adjust angle by 1 degree
-            for planet in self.map.all_planets():
-                counter = 0
-                while in_radius_of_point((updated_ship_posx, updated_ship_posy), planet, planet.radius) \
-                        and counter < 100:
-                    angle = angle + 1
-                    updated_ship_posx = speed * numpy.cos(angle) + ship.x
-                    updated_ship_posy = speed * numpy.sin(angle) + ship.y
-                    counter = counter + 1
-                    move_command = ship.thrust(speed, angle)
+                logging.debug("ShipNR: " + str(ship.id) + " || Thrust: " + str(speed) + " with Angle: " + str(angle))
+                return ship.thrust(speed, angle)
+        else:
+            offset_of_point = 0.5
+            # calculate the middle point between line of target and ship
+            line_point = calc_midpoint(ship, target)
+            # get two points orthogonal of middle point forming a line
+            side_points = get_offset_points(ship, target, line_point, offset_of_point)
+            # check if new targets contain an obstacle on their way (if so return None)
+            new_target = self.has_obstacle_in_path(side_points, ship)
 
-            counter = 0
-            for too_close_ship in self.my_ships:
-                logging.debug("Ship too close!")
-                while in_radius_of_point((updated_ship_posx, updated_ship_posy), too_close_ship, 0) and counter < 100:
-                    angle = angle + 1
-                    updated_ship_posx = speed * numpy.cos(angle) + ship.x
-                    updated_ship_posy = speed * numpy.sin(angle) + ship.y
-                    counter = counter + 1
-                    move_command = ship.thrust(speed, angle)
+            # repeat until point is found that doesnt have an obstacle on its way
+            while new_target is None and offset_of_point < 45:
+                offset_of_point = offset_of_point + 0.5
+                side_points = get_offset_points(ship, target, line_point, offset_of_point)
+                new_target = self.has_obstacle_in_path(side_points, ship)
+                logging.debug(
+                    "TARGET CORRECTION - ShipNR: " + str(ship.id) + " || OLD POS: " + str(target) + " NEW POS: " + str(
+                        new_target))
 
-            return move_command
-        return None
+            new_angle = round(ship.calculate_angle_between(ship.closest_point_to(new_target)))
+            logging.debug("ShipNR: " + str(ship.id) + " || Thrust: " + str(speed) + " with Angle: " + str(angle))
+            return ship.thrust(speed, new_angle)
 
 
 # Basic turn loop. First update our bot, then fetch the commands and send them to the halite engine
