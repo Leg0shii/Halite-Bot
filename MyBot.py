@@ -61,6 +61,7 @@ class Bot:
         self.max_radius = self.max_planet.radius
         self.max_remaining_resources = self.max_planet.remaining_resources
         self.turn = 0
+        self.starting_position = Position(0, 0)
         # TODO : Integrate Penalties and Bonus
         # Penalties
         self.time_penalty = -1
@@ -71,6 +72,8 @@ class Bot:
 
     # Update the data each round
     def update(self, _game_map):
+        if self.turn < 1:
+            self.starting_position = Position(self.my_ships[0].x,self.my_ships[0].y)
         self.map = _game_map
         self.me = self.map.get_me()
         self.my_ships = self.me.all_ships()
@@ -84,7 +87,7 @@ class Bot:
     # Main commanding method
     def command_ships(self):
         _command_queue = []
-        if self.turn < 50:
+        if self.turn < 40:
             self.my_ships: []
             for ship in self.my_ships:
                 if self.my_ships.index(ship) == 0 and self.check_if_rushed(ship):
@@ -107,12 +110,6 @@ class Bot:
         if ship.docking_status != ship.DockingStatus.UNDOCKED:
             if not ship.planet.remaining_resources > 0:
                 return ship.undock()
-        '''# Check if this ship would want to dodge incoming collision
-        dodge_command = self.check_if_dodge(ship)
-        if dodge_command:
-            _command_queue.append(dodge_command)
-            continue
-        '''
         # Check if ship would want to defend the closest planet
         defend_command = self.check_if_defend(ship)
         if defend_command:
@@ -134,10 +131,7 @@ class Bot:
                 interesting_planet.owner == self.me or not interesting_planet.is_owned()):
             return ship.dock(interesting_planet)
         # Else navigate towards that interesting planet
-        return ship.navigate(
-            ship.closest_point_to(interesting_planet),
-            self.map,
-            speed=hlt.constants.MAX_SPEED)
+        return self.ship_move(ship, ship.closest_point_to(interesting_planet))
 
     # Main function for evaluating planets and determining an for the ship interesting one
     def evaluate_planet(self, ship, planet):
@@ -172,9 +166,12 @@ class Bot:
             # Only show interest if planet is close enough
             if ship.calculate_distance_between(planet) < self.max_distance / 4:
                 enemy_planet = 1 - len(planet.all_docked_ships()) / planet.num_docking_spots
+        unowned_planet = 0
+        if not planet.is_owned():
+            unowned_planet = 1
         # Weighted priority
         priority = distance * 3 + enemy_planet * 2 + remaining_resources * 0.5 + free_docking_spots * 0.5 \
-                   + line_penalty * 1 + distance_to_center * 1
+                   + line_penalty * 1 + distance_to_center * 1 + unowned_planet * 1
         return priority
 
     # Hunt down the closest enemy ship
@@ -189,11 +186,7 @@ class Bot:
                 closest_enemy_ship = enemy_ship
                 closest_distance = enemy_ship_distance
         # Navigate towards it. This will attack it if it reaches its radius.
-        command = ship.navigate(
-            ship.closest_point_to(closest_enemy_ship),
-            self.map,
-            speed=hlt.constants.MAX_SPEED
-        )
+        command = self.ship_move(ship, ship.closest_point_to(closest_enemy_ship))
         return command
 
     # Same as hunting, except now attack the closest docked ship of a given planet
@@ -205,11 +198,7 @@ class Bot:
             if closest_distance > enemy_ship_distance:
                 closest_enemy_ship = enemy_ship
                 closest_distance = enemy_ship_distance
-        command = ship.navigate(
-            ship.closest_point_to(closest_enemy_ship),
-            self.map,
-            speed=hlt.constants.MAX_SPEED
-        )
+        command = self.ship_move(ship, ship.closest_point_to(closest_enemy_ship))
         return command
 
     # Gives a ship an option to detect close ships
@@ -248,20 +237,18 @@ class Bot:
                 closest_enemy_ship = enemy_ship
                 closest_distance = enemy_ship_distance
         # If the enemy ship is less than 4 weapon radii, start the circle planet protocol
-        if closest_distance < hlt.constants.WEAPON_RADIUS * 4:
-            command = self.circle_planet(ship, closest_enemy_ship)
+        if closest_distance > hlt.constants.WEAPON_RADIUS * 4:
+            command = self.ship_move(ship, ship.closest_point_to(closest_enemy_ship))
         # Else move towards the enemy ship to bait it
+        elif self.turn < 5:
+            command = self.ship_move(ship, self.starting_position)
         else:
-            command = ship.navigate(
-                ship.closest_point_to(closest_enemy_ship),
-                self.map,
-                speed=hlt.constants.MAX_SPEED
-            )
+            command = self.circle_planet(ship, closest_enemy_ship)
         return command
 
-    # Circles the closest viable planet and baits enemy ship to follow you endlessly
+    # Circles the closest viable planet counter clock wise and baits enemy ship to follow you endlessly
     def circle_planet(self, ship, enemy_ship):
-        closest_planet: Planet = self.get_closest_planet_except_middle(ship)
+        closest_planet: Planet = self.get_viable_planet_for_bait(ship)
         # Calculate some stuff used for equations
         distance_to_planet_ship = ship.calculate_distance_between(closest_planet)
         distance_to_planet_enemy_ship = closest_planet.calculate_distance_between(enemy_ship)
@@ -292,7 +279,7 @@ class Bot:
                                       (ship.calculate_angle_between(closest_planet) + flying_angle_less_speed) % 360)
         return command
 
-    # Returns a defend command
+    # Returns a dodge command
     def check_if_dodge(self, ship):
         dodge_command = None
         # If the ship is too close to another of my ships
@@ -335,11 +322,7 @@ class Bot:
         # If I own the closest planet and an enemy ship is within 3 times its radius distance
         if closest_planet.owner == self.me and closest_distance < closest_planet.radius * 3:
             # Defend the planet
-            command = ship.navigate(
-                ship.closest_point_to(closest_enemy_ship),
-                self.map,
-                speed=hlt.constants.MAX_SPEED
-            )
+            command = self.ship_move(ship, ship.closest_point_to(closest_enemy_ship))
         return command
 
     # Returns closest planet
@@ -352,7 +335,7 @@ class Bot:
                 min_distance = ship.calculate_distance_between(planet)
         return min_planet
 
-    def get_closest_planet_except_middle(self, ship):
+    def get_viable_planet_for_bait(self, ship):
         min_planet = None
         min_distance = self.max_distance
         for planet in self.planets:
@@ -401,7 +384,7 @@ class Bot:
             new_target = self.has_obstacle_in_path(side_points, ship)
 
             # repeat until point is found that doesnt have an obstacle on its way
-            while new_target is None and offset_of_point < 45:
+            while new_target is None:
                 offset_of_point = offset_of_point + 0.5
                 side_points = get_offset_points(ship, target, line_point, offset_of_point)
                 new_target = self.has_obstacle_in_path(side_points, ship)
