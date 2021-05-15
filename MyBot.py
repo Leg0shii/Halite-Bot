@@ -2,6 +2,7 @@ import hlt
 import logging
 import numpy
 import math
+import time
 
 from hlt import Game
 from hlt.entity import Ship, Planet, Position
@@ -394,6 +395,7 @@ class Bot:
                     "TARGET CORRECTION - ShipNR: " + str(ship.id) + " || OLD POS: " + str(target) + " NEW POS: " + str(
                         new_target))
             if new_target is None:
+                logging.debug("COULDNT FIND ANYTHING HELP-1")
                 return None
             new_angle = round(ship.calculate_angle_between(ship.closest_point_to(new_target)))
             logging.debug("ShipNR: " + str(ship.id) + " || Thrust: " + str(speed) + " with Angle: " + str(angle))
@@ -408,16 +410,17 @@ class Bot:
         logging.debug("ShipNR: " + str(ship.id) + " || OBSTACLES: " + str(obstacles_on_path))
 
         # If ship is already closer then 0.5 units then dont do anything
-        if distance_to_target < 0.5:
-            logging.debug("ShipNR: " + str(ship.id) + " || No movement")
-            ship_pos_dict[ship] = Position(ship.x, ship.y)
-            return None
+        # if distance_to_target < 0.5:
+        #     logging.debug("ShipNR: " + str(ship.id) + " || No movement")
+        #     ship_pos_dict[ship] = Position(ship.x, ship.y)
+        #     logging.debug("COULDNT FIND ANYTHING HELP0")
+        #     return None
 
         # If no obstacles on the way, fly straight
         if len(obstacles_on_path) == 0:
-            # If you are already closer then 8, fly with slower speed
-            if distance_to_target < 8:
-                smaller_speed = numpy.floor(distance_to_target)
+            # If you are already closer then 7, fly with slower speed
+            if distance_to_target < 7:
+                smaller_speed = numpy.ceil(distance_to_target)
                 logging.debug(
                     "ShipNR: " + str(ship.id) + " || Thrust: " + str(smaller_speed) + " with Angle: " + str(angle))
                 ship_pos_dict[ship] = calc_update_pos(ship, smaller_speed, angle)
@@ -431,10 +434,19 @@ class Bot:
             ship_targets = []
             org_angle = angle
             # get 10 angles away from straight line on both sides
-            for i in range(20):
-                speed = 1
-                for j in range(6):
-                    angle = (((-1) ** i) * numpy.floor(i / 2) + org_angle % 360)
+            start_time = time.time()
+            tries = 20
+            for i in range(tries):
+                speed = 7
+                for j in range(1):
+                    if i < tries * 0.85:
+                        angle = ((((-2) ** i) * numpy.floor(i / 2) + org_angle) % 360)
+                    elif tries * 0.85 < i < tries * 0.9:
+                        angle = ((((-2) ** i) * numpy.floor(i / 2) + (org_angle + 90)) % 360)
+                    elif tries * 0.9 < i < tries * 0.95:
+                        angle = ((((-2) ** i) * numpy.floor(i / 2) + (org_angle + 180)) % 360)
+                    else:
+                        angle = ((((-2) ** i) * numpy.floor(i / 2) + (org_angle + 270)) % 360)
                     # calc next position
                     possible_target = calc_update_pos(ship, speed, angle)
                     # save all positions that are outside of a planet or enemy
@@ -444,26 +456,29 @@ class Bot:
                         dist_to_poss_targ = calc_dist(possible_target, target)
                         ship_targets.append((dist_to_poss_targ, possible_target, speed))
                     speed = speed + 1
-            # sort these so the one with shortest distance to goal is first
+            logging.debug("TIME1 : " + str(time.time() - start_time))
 
             # if it cant find any nearest targets, do nothing
             if len(ship_targets) == 0:
                 logging.debug("COULDNT FIND ANYTHING HELP1")
                 ship_pos_dict[ship] = Position(ship.x, ship.y)
                 return None
+            # sort these so the one with shortest distance to goal is first
             ship_targets.sort(key=takeFirst)
             ship_pos_dict[ship] = ship_targets[0][1]
             # repeat for loop until you find a position that isnt used by other ship
-            better_speed = 0
+            better_speed = ship_targets[0][2]
+            restart_counter = 0
             restart = True
-            while restart:
+            start_time = time.time()
+            while restart and restart_counter < 5:
                 # resets the while loop to be escaped
                 restart = False
                 # look through all ships
                 for ships in ship_pos_dict.keys():
                     counter = 1
                     # if position is the same, then iterate through saved positions of this ship
-                    while in_radius_of_point(ship_pos_dict[ships], ship_pos_dict[ship], 0.6) \
+                    while in_radius_of_point(ship_pos_dict[ships], ship_pos_dict[ship], 0.5) \
                             and counter < len(ship_targets):
                         counter = counter + 1
                         if ships.id != ship.id:
@@ -477,8 +492,11 @@ class Bot:
                             better_speed = ship_targets[counter][2]
                             # restart the for loop after its finished
                             restart = True
+                            restart_counter = restart_counter + 1
             # use the one with shortest distance to goal as next target
             new_angle = ship.calculate_angle_between(ship_pos_dict[ship])
+            logging.debug("TIME2 : " + str(time.time() - start_time))
+            logging.debug("ShipNR: " + str(ship.id) + " || Thrust: " + str(better_speed) + " with Angle: " + str(angle))
             return ship.thrust(better_speed, new_angle)
 
     def is_enemy_ship(self, test_ship):
@@ -491,7 +509,9 @@ class Bot:
 # Basic turn loop. First update our bot, then fetch the commands and send them to the halite engine
 bot = Bot(game)
 while True:
+    start = time.time()
     game_map = game.update_map()
     bot.update(game_map)
     command_queue = bot.command_ships()
     game.send_command_queue(command_queue)
+    logging.debug("Time taken: " + str((time.time() - start)))
