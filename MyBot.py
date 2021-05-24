@@ -390,7 +390,7 @@ class Bot:
             logging.debug("ShipNR: " + str(ship.id) + " || Thrust: " + str(speed) + " with Angle: " + str(angle))
             return ship.thrust(speed, new_angle)
 
-    def ship_move(self, ship: Ship, target: Position):
+    def ship_move_Daniel(self, ship: Ship, target: Position):
         distance_to_target = ship.calculate_distance_between(target)
         angle = ship.calculate_angle_between(target)
         speed = constants.MAX_SPEED
