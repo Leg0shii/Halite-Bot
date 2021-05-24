@@ -487,7 +487,7 @@ class Bot:
     def ccw(self, a, b, c):
         return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x)
 
-    # Return true if line segments AB and CD intersect
+    # Return true if line segments AB and CD intersect From user Grumdrig on https://stackoverflow.com/questions/3838329/how-can-i-check-if-two-segments-intersect
     def intersect(self, a, b, c, d):
         return self.ccw(a, c, d) != self.ccw(b, c, d) and self.ccw(a, b, c) != self.ccw(a, b, d)
 
