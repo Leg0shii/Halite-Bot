@@ -196,7 +196,7 @@ class Bot:
         if self.starting_position.calculate_distance_between(Position(planet.x, planet.y)) < self.map.width / 4:
             back_planet = 1
         # Weighted priority
-        priority = distance * 1 + enemy_planet * 1 + remaining_resources * 0.1 + free_docking_spots * 0.1 \
+        priority = distance * 2 + enemy_planet * 0.5 + remaining_resources * 0.1 + free_docking_spots * 0.1 \
                    + line_penalty * 1 + distance_to_center * 0.5 + unowned_planet * 0.05 + back_planet * 1
         return priority
 
