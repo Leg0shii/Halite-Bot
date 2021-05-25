@@ -73,6 +73,9 @@ class Bot:
         self.max_remaining_resources = self.max_planet.remaining_resources
         self.turn = 0
         self.starting_position = Position(0, 0)
+        self.my_ships_ids = []
+        for ship in self.my_ships:
+            self.my_ships_ids.append(ship.id)
         # TODO : Integrate Penalties and Bonus
         # Penalties
         self.time_penalty = -1
@@ -88,12 +91,21 @@ class Bot:
         self.map = _game_map
         self.me = self.map.get_me()
         self.my_ships = self.me.all_ships()
+        self.my_ships_ids = []
+        for ship in self.my_ships:
+            self.my_ships_ids.append(ship.id)
         self.enemy_ships = []
         for ship in self.map._all_ships():
             if ship.owner.id != self.id:
                 self.enemy_ships.append(ship)
         self.planets = self.map.all_planets()
         self.turn += 1
+        saved_ids = []
+        for ship_id in ship_pos_dict.keys():
+            if ship_id not in self.my_ships_ids:
+                saved_ids.append(ship_id)
+        for saved_id in saved_ids:
+            ship_pos_dict.pop(saved_id)
 
     # Main commanding method
     def command_ships(self):
@@ -355,52 +367,7 @@ class Bot:
                 min_distance = ship.calculate_distance_between(planet)
         return min_planet
 
-    # Moves the ship around
-    def ship_move2(self, ship, target):
-        distance_to_target = ship.calculate_distance_between(target)
-        angle = ship.calculate_angle_between(target)
-        speed = hlt.constants.MAX_SPEED
-
-        obstacles_on_path = self.map.obstacles_between(ship, target)
-        logging.debug("ShipNR: " + str(ship.id) + " || OBSTACLES: " + str(obstacles_on_path))
-
-        # If no obstacles on the way, fly straight
-        if len(obstacles_on_path) == 0:
-            # If you are already closer than 7, fly with slower speed
-            if distance_to_target < hlt.constants.MAX_SPEED:
-                smaller_speed = distance_to_target
-                logging.debug(
-                    "ShipNR: " + str(ship.id) + " || Thrust: " + str(smaller_speed) + " with Angle: " + str(angle))
-                return ship.thrust(smaller_speed, angle)
-            # Fly straight as fast as possible
-            else:
-                logging.debug("ShipNR: " + str(ship.id) + " || Thrust: " + str(speed) + " with Angle: " + str(angle))
-                return ship.thrust(speed, angle)
-        else:
-            offset_of_point = 0.5
-            # calculate the middle point between line of target and ship
-            line_point = calc_midpoint(ship, target)
-            # get two points orthogonal of middle point forming a line
-            side_points = get_offset_points(ship, target, line_point, offset_of_point)
-            # check if new targets contain an obstacle on their way (if so return None)
-            new_target = self.has_obstacle_in_path(side_points, ship)
-
-            # repeat until point is found that doesnt have an obstacle on its way
-            while new_target is None and offset_of_point < 45:
-                offset_of_point = offset_of_point + 0.5
-                side_points = get_offset_points(ship, target, line_point, offset_of_point)
-                new_target = self.has_obstacle_in_path(side_points, ship)
-                logging.debug(
-                    "TARGET CORRECTION - ShipNR: " + str(ship.id) + " || OLD POS: " + str(target) + " NEW POS: " + str(
-                        new_target))
-            if new_target is None:
-                logging.debug("COULDNT FIND ANYTHING HELP-1")
-                return None
-            new_angle = round(ship.calculate_angle_between(ship.closest_point_to(new_target)))
-            logging.debug("ShipNR: " + str(ship.id) + " || Thrust: " + str(speed) + " with Angle: " + str(angle))
-            return ship.thrust(speed, new_angle)
-
-    def ship_move_Daniel(self, ship: Ship, target: Position):
+    def ship_move(self, ship: Ship, target: Position):
         distance_to_target = ship.calculate_distance_between(target)
         angle = ship.calculate_angle_between(target)
         speed = constants.MAX_SPEED
@@ -414,12 +381,12 @@ class Bot:
             if distance_to_target < hlt.constants.MAX_SPEED:
                 logging.debug(
                     "ShipNR: " + str(ship.id) + " || Thrust: " + str(distance_to_target) + " with Angle: " + str(angle))
-                ship_pos_dict[ship] = calc_update_pos(ship, distance_to_target, angle)
+                ship_pos_dict[ship.id] = calc_update_pos(ship, distance_to_target, angle)
                 return ship.thrust(distance_to_target, angle)
             # Fly straight as fast as possible
             else:
                 logging.debug("ShipNR: " + str(ship.id) + " || Thrust: " + str(speed) + " with Angle: " + str(angle))
-                ship_pos_dict[ship] = calc_update_pos(ship, speed, angle)
+                ship_pos_dict[ship.id] = calc_update_pos(ship, speed, angle)
                 return ship.thrust(speed, angle)
         else:
             ship_targets = []
@@ -430,7 +397,8 @@ class Bot:
                 for j in range(6):
                     angle = ((((-1) ** i) * numpy.floor(i / 2) * 180 / 10 + org_angle) % 360)
                     # calc next position
-                    possible_target = calc_update_pos(ship, speed, angle)
+                    vec = self.create_vector_by_angle(angle, speed)
+                    possible_target = Position(ship.x + vec[0], ship.y + vec[1])
                     # save all positions that are outside of a planet or enemy
                     if len(game_map.obstacles_between(ship, possible_target)) > 0:
                         break
@@ -441,44 +409,48 @@ class Bot:
             # if it cant find any nearest targets, do nothing
             if len(ship_targets) == 0:
                 logging.debug("COULDNT FIND ANYTHING HELP1")
-                ship_pos_dict[ship] = Position(ship.x, ship.y)
+                ship_pos_dict[ship.id] = Position(ship.x, ship.y)
                 return None
             ship_targets.sort(key=lambda x: x[0])
-            ship_pos_dict[ship] = ship_targets[0][1]
+            ship_pos_dict[ship.id] = ship_targets[0][1]
             better_speed = ship_targets[0][2]
-            vec1 = self.create_vector_by_angle(org_angle, better_speed)
+            vec1 = self.create_vector_by_positions(Position(ship.x, ship.y),
+                                                   Position(ship_pos_dict[ship.id].x, ship_pos_dict[ship.id].y))
             # look through all ships
-            for ships in ship_pos_dict.keys():
+            for ship_id in ship_pos_dict.keys():
+                ships = self.me.get_ship(ship_id)
                 ships: Ship
-                ships_end_position = ship_pos_dict.get(ships)
+                ships_end_position = ship_pos_dict.get(ships.id)
                 vec2 = self.create_vector_by_positions(Position(ships.x, ships.y),
                                                        Position(ships_end_position.x, ships_end_position.y))
-                if ships == ship:
+                if ships.id == ship.id:
                     continue
-                if ship.calculate_distance_between(ships) > hlt.constants.MAX_SPEED * 2:
+                if ship.calculate_distance_between(ships) > hlt.constants.MAX_SPEED * 2.5:
                     continue
                 counter = 0
                 # if position is the same, then iterate through saved positions of this ship
                 while self.check_intersection(Position(ship.x, ship.y), vec1,
                                               Position(ships.x, ships.y), vec2, hlt.constants.SHIP_RADIUS):
-                    counter = counter + 1
                     # logging.debug(str("COUNTER: " + str(counter)))
+                    # logging.debug("Checking: " + str(ship_pos_dict[ship].x) + " " + str(ship_pos_dict[ship].y))
+                    # logging.debug("Still intersecting with " + str(ships.id))
                     # if cant find any, stop
                     if counter == len(ship_targets):
-                        ship_pos_dict[ship] = Position(ship.x, ship.y)
+                        ship_pos_dict[ship.id] = Position(ship.x, ship.y)
                         logging.debug("COULDNT FIND ANYTHING HELP2" + " || With counter: " + str(counter))
                         return None
-                    ship_pos_dict[ship] = ship_targets[counter][1]
+                    ship_pos_dict[ship.id] = ship_targets[counter][1]
                     better_speed = ship_targets[counter][2]
-                    new_angle = ship.calculate_angle_between(ship_pos_dict[ship])
+                    new_angle = ship.calculate_angle_between(ship_pos_dict[ship.id])
                     vec1 = self.create_vector_by_angle(new_angle, better_speed)
-            new_angle = ship.calculate_angle_between(ship_pos_dict[ship])
+                    counter = counter + 1
+            new_angle = ship.calculate_angle_between(ship_pos_dict[ship.id])
             # use the one with shortest distance to goal as next target
             logging.debug("ShipNR: " + str(ship.id) + " || Found New Command: " + " || Thrust: " + str(
                 better_speed) + " with Angle: " + str(new_angle))
             return ship.thrust(better_speed, new_angle)
 
-    def ship_move(self, ship, target):
+    def ship_move2(self, ship, target):
         distance_to_target = ship.calculate_distance_between(target)
         angle = round(ship.calculate_angle_between(ship.closest_point_to(target)))
         speed = constants.MAX_SPEED
@@ -583,9 +555,9 @@ class Bot:
         return False
 
     def check_intersection(self, pos1_start: Position, vec1, pos2_start: Position, vec2, threshold):
-        pos1_end = Position(pos1_start.x + vec1[0], pos1_start.y + vec1[1])
-        pos2_end = Position(pos2_start.x + vec2[0], pos2_start.y + vec2[1])
-        if self.intersect(pos1_start, pos1_end, pos2_start, pos1_end):
+        pos1_end = Position(pos1_start.x + vec1[0] * 2, pos1_start.y + vec1[1] * 2)
+        pos2_end = Position(pos2_start.x + vec2[0] * 2, pos2_start.y + vec2[1] * 2)
+        if self.intersect(pos1_start, pos1_end, pos2_start, pos2_end):
             return True
         if in_radius_of_point(pos1_end, pos2_end, threshold * 2):
             return True
@@ -614,4 +586,6 @@ while True:
     bot.update(game_map)
     command_queue = bot.command_ships()
     game.send_command_queue(command_queue)
+    logging.debug(len(ship_pos_dict))
+    logging.debug(ship_pos_dict)
     logging.debug("Time taken: " + str((time.time() - start)))
