@@ -46,8 +46,27 @@ def get_offset_points(pos1, pos2, middle, offset):
     return [Position(new_x_1, new_y_1), Position(new_x_2, new_y_2)]
 
 
-def takeFirst(elem):
+def take_first(elem):
     return elem[0]
+
+
+def create_vector_by_angle(angle, speed):
+    return [speed * numpy.cos(numpy.radians(angle)),
+            speed * numpy.sin(numpy.radians(angle))]
+
+
+def create_vector_by_positions(pos1: Position, pos2: Position):
+    return [pos2.x - pos1.x, pos2.y - pos1.y]
+
+
+def ccw(a, b, c):
+    return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x)
+
+
+# Return true if line segments AB and CD intersect From user Grumdrig on
+# https://stackoverflow.com/questions/3838329/how-can-i-check-if-two-segments-intersect
+def intersect(a, b, c, d):
+    return ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d)
 
 
 class Bot:
@@ -196,8 +215,8 @@ class Bot:
         if self.starting_position.calculate_distance_between(Position(planet.x, planet.y)) < self.map.width / 4:
             back_planet = 1
         # Weighted priority
-        priority = distance * 2 + enemy_planet * 0.5 + remaining_resources * 0.1 + free_docking_spots * 0.1 \
-                   + line_penalty * 1 + distance_to_center * 0.5 + unowned_planet * 0.05 + back_planet * 1
+        priority = distance * 1 + enemy_planet * 1 + remaining_resources * 0.05 + free_docking_spots * 0.05 \
+                   + line_penalty * 0.5 + distance_to_center * 0.5 + unowned_planet * 0.1 + back_planet * 1
         return priority
 
     # Hunt down the closest enemy ship
@@ -230,7 +249,7 @@ class Bot:
     # Gives a ship an option to detect close ships
     def in_proximity_of_enemy(self, ship):
         for enemy_ship in self.enemy_ships:
-            if ship.calculate_distance_between(enemy_ship) < 5 * hlt.constants.WEAPON_RADIUS:
+            if ship.calculate_distance_between(enemy_ship) < 3 * hlt.constants.WEAPON_RADIUS:
                 return True
         return False
 
@@ -254,7 +273,7 @@ class Bot:
     # Mitigates an enemy rush. Works best if enemy forms squads
     def mitigate_rush(self, ship):
         command = None
-        closest_enemy_ship: Ship = None
+        closest_enemy_ship = None
         closest_distance = self.max_distance
         # Determine closest enemy ship
         for enemy_ship in self.enemy_ships:
@@ -397,7 +416,7 @@ class Bot:
                 for j in range(6):
                     angle = ((((-1) ** i) * numpy.floor(i / 2) * 180 / 10 + org_angle) % 360)
                     # calc next position
-                    vec = self.create_vector_by_angle(angle, speed)
+                    vec = create_vector_by_angle(angle, speed)
                     possible_target = Position(ship.x + vec[0], ship.y + vec[1])
                     # save all positions that are outside of a planet or enemy
                     if len(game_map.obstacles_between(ship, possible_target)) > 0:
@@ -414,15 +433,15 @@ class Bot:
             ship_targets.sort(key=lambda x: x[0])
             ship_pos_dict[ship.id] = ship_targets[0][1]
             better_speed = ship_targets[0][2]
-            vec1 = self.create_vector_by_positions(Position(ship.x, ship.y),
-                                                   Position(ship_pos_dict[ship.id].x, ship_pos_dict[ship.id].y))
+            vec1 = create_vector_by_positions(Position(ship.x, ship.y),
+                                              Position(ship_pos_dict[ship.id].x, ship_pos_dict[ship.id].y))
             # look through all ships
             for ship_id in ship_pos_dict.keys():
                 ships = self.me.get_ship(ship_id)
                 ships: Ship
                 ships_end_position = ship_pos_dict.get(ships.id)
-                vec2 = self.create_vector_by_positions(Position(ships.x, ships.y),
-                                                       Position(ships_end_position.x, ships_end_position.y))
+                vec2 = create_vector_by_positions(Position(ships.x, ships.y),
+                                                  Position(ships_end_position.x, ships_end_position.y))
                 if ships.id == ship.id:
                     continue
                 if ship.calculate_distance_between(ships) > hlt.constants.MAX_SPEED * 2.5:
@@ -442,7 +461,7 @@ class Bot:
                     ship_pos_dict[ship.id] = ship_targets[counter][1]
                     better_speed = ship_targets[counter][2]
                     new_angle = ship.calculate_angle_between(ship_pos_dict[ship.id])
-                    vec1 = self.create_vector_by_angle(new_angle, better_speed)
+                    vec1 = create_vector_by_angle(new_angle, better_speed)
                     counter = counter + 1
             new_angle = ship.calculate_angle_between(ship_pos_dict[ship.id])
             # use the one with shortest distance to goal as next target
@@ -513,7 +532,7 @@ class Bot:
                 ship_pos_dict[ship] = Position(ship.x, ship.y)
                 return None
             # sort these so the one with shortest distance to goal is first
-            ship_targets.sort(key=takeFirst)
+            ship_targets.sort(key=take_first)
             ship_pos_dict[ship] = ship_targets[0][1]
             # repeat for loop until you find a position that isnt used by other ship
             better_speed = ship_targets[0][2]
@@ -557,25 +576,11 @@ class Bot:
     def check_intersection(self, pos1_start: Position, vec1, pos2_start: Position, vec2, threshold):
         pos1_end = Position(pos1_start.x + vec1[0] * 2, pos1_start.y + vec1[1] * 2)
         pos2_end = Position(pos2_start.x + vec2[0] * 2, pos2_start.y + vec2[1] * 2)
-        if self.intersect(pos1_start, pos1_end, pos2_start, pos2_end):
+        if intersect(pos1_start, pos1_end, pos2_start, pos2_end):
             return True
         if in_radius_of_point(pos1_end, pos2_end, threshold * 2):
             return True
         return False
-
-    def create_vector_by_angle(self, angle, speed):
-        return [speed * numpy.cos(numpy.radians(angle)),
-                speed * numpy.sin(numpy.radians(angle))]
-
-    def create_vector_by_positions(self, pos1: Position, pos2: Position):
-        return [pos2.x - pos1.x, pos2.y - pos1.y]
-
-    def ccw(self, a, b, c):
-        return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x)
-
-    # Return true if line segments AB and CD intersect From user Grumdrig on https://stackoverflow.com/questions/3838329/how-can-i-check-if-two-segments-intersect
-    def intersect(self, a, b, c, d):
-        return self.ccw(a, c, d) != self.ccw(b, c, d) and self.ccw(a, b, c) != self.ccw(a, b, d)
 
 
 # Basic turn loop. First update our bot, then fetch the commands and send them to the halite engine
