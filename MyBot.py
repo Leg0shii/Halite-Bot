@@ -69,6 +69,16 @@ def intersect(a, b, c, d):
     return ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d)
 
 
+def check_intersection(pos1_start: Position, vec1, pos2_start: Position, vec2, threshold):
+    pos1_end = Position(pos1_start.x + vec1[0] * 2, pos1_start.y + vec1[1] * 2)
+    pos2_end = Position(pos2_start.x + vec2[0] * 2, pos2_start.y + vec2[1] * 2)
+    if intersect(pos1_start, pos1_end, pos2_start, pos2_end):
+        return True
+    if in_radius_of_point(pos1_end, pos2_end, threshold * 2):
+        return True
+    return False
+
+
 class Bot:
     game: Game
     ship: Ship
@@ -448,7 +458,7 @@ class Bot:
                     continue
                 counter = 0
                 # if position is the same, then iterate through saved positions of this ship
-                while self.check_intersection(Position(ship.x, ship.y), vec1,
+                while check_intersection(Position(ship.x, ship.y), vec1,
                                               Position(ships.x, ships.y), vec2, hlt.constants.SHIP_RADIUS):
                     # logging.debug(str("COUNTER: " + str(counter)))
                     # logging.debug("Checking: " + str(ship_pos_dict[ship].x) + " " + str(ship_pos_dict[ship].y))
@@ -571,15 +581,6 @@ class Bot:
         for ship in self.enemy_ships:
             if ship == test_ship:
                 return True
-        return False
-
-    def check_intersection(self, pos1_start: Position, vec1, pos2_start: Position, vec2, threshold):
-        pos1_end = Position(pos1_start.x + vec1[0] * 2, pos1_start.y + vec1[1] * 2)
-        pos2_end = Position(pos2_start.x + vec2[0] * 2, pos2_start.y + vec2[1] * 2)
-        if intersect(pos1_start, pos1_end, pos2_start, pos2_end):
-            return True
-        if in_radius_of_point(pos1_end, pos2_end, threshold * 2):
-            return True
         return False
 
 
